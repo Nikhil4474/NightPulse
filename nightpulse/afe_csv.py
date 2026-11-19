@@ -16,7 +16,9 @@ print(f'{len(t)} ECG samples, {span*scale:.1f} s, estimated rate {fs:.0f} Hz (ti
 tu = np.arange(t[0], t[-1], 1/500/scale); xu = np.interp(tu, t, x)
 xu = detrend(xu, type='constant')
 # documented preprocessing: 60 Hz notch (mains) then 0.5-35 Hz band-pass, zero phase
-b, a = iirnotch(60, 30, 500); xu = filtfilt(b, a, xu)
+# mains pickup shows at 60 Hz (measured 60.2 Hz on our EVM) AND as a ~10 Hz image (60.2 minus the 50 Hz frame rate), so notch both
+for f0 in (60.0, 60.2, 10.15):
+    b, a = iirnotch(f0, 30, 500); xu = filtfilt(b, a, xu)
 xu = sosfiltfilt(butter(3, [0.5, 35], btype='band', fs=500, output='sos'), xu)
 y = decimate(xu, 5, ftype='fir', zero_phase=True)
 y = y / (np.percentile(np.abs(y), 99.5) + 1e-12) * 1.0          # scale so R waves are about 1 mV-like, whatever the ADC units

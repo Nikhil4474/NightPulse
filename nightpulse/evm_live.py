@@ -79,8 +79,9 @@ class EvmStream:
         self.cfg, self.configure, self.dec = cfg, configure, Decoder(offset)
         self.lock = threading.Lock(); self.stop_flag = False; self.state = 'starting'; self.msg = ''; self.err = None
         self.wpos = None; self.backup = None; self._tia_new = []; self.ecg_raw = []; self.tia_raw = []; self.pending = []; self.scale = None; self.zi = None; self.n500 = 0
-        b, a = iirnotch(60, 30, 500)
-        self.sos = np.vstack([tf2sos(b, a), butter(4, [0.5, 35], btype='band', fs=500, output='sos')])
+        # mains at 60 Hz (60.2 Hz measured) plus its ~10 Hz image from the 50 Hz frame rate (60.2 - 50)
+        notch = [tf2sos(*iirnotch(f0, 30, 500)) for f0 in (60.0, 60.2, 10.15)]
+        self.sos = np.vstack(notch + [butter(4, [0.5, 35], btype='band', fs=500, output='sos')])
         self.thread = threading.Thread(target=self._run, daemon=True); self.thread.start()
     def _run(self):
         reg = cap = None
