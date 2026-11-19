@@ -1,0 +1,6 @@
+numpy>=1.26
+scipy>=1.11
+wfdb>=4.1
+scikit-learn>=1.3   # only for training and evaluation scripts
+pandas>=2.0         # only for the OSASUD and BIDMC evaluation scripts
+matplotlib>=3.8     # only for regenerating report figures

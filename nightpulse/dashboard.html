@@ -1,0 +1,109 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NightPulse</title>
+<style>
+:root{--bg:#0A1520;--panel:#10222F;--panel2:#142B3B;--line:#1F3A4D;--text:#E8F1F6;--mute:#8CA6B7;--teal:#2DD4BF;--green:#4ADE80;--amber:#F5B13D;--red:#FF5D6C;--blue:#5AA9FF;--purple:#A78BFA}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;height:100vh;overflow:hidden;padding:18px 22px;display:flex;flex-direction:column;gap:14px}
+header{display:flex;align-items:center;gap:16px}
+.logo{font-size:30px;font-weight:700;letter-spacing:.5px}.logo b{color:var(--teal)}
+.sub{color:var(--mute);font-size:14px}
+.chip{padding:5px 12px;border-radius:999px;font-size:13px;font-weight:600;border:1px solid var(--line);background:var(--panel)}
+.chip.replay{color:var(--amber);border-color:#5b4a1d}.chip.live{color:var(--green)}
+select.chip{color:var(--text);background:var(--panel);font-family:inherit}
+.sp{flex:1}
+.speed button{background:var(--panel);color:var(--mute);border:1px solid var(--line);padding:6px 12px;border-radius:8px;font-size:13px;cursor:pointer;margin-left:6px}
+.speed button.on{color:var(--bg);background:var(--teal);border-color:var(--teal);font-weight:700}
+.grid{flex:1;display:grid;grid-template-columns:repeat(20,1fr);grid-template-rows:1.1fr .8fr .85fr .8fr;gap:14px;min-height:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;min-height:0;min-width:0}
+.card h3{font-size:12px;letter-spacing:1.4px;text-transform:uppercase;color:var(--mute);font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+.card canvas{flex:1;width:100%;min-height:0}
+.ecg{grid-column:span 13}.gauge{grid-column:span 7;align-items:center}
+.tl{grid-column:span 20}
+.c3{grid-column:span 4}.bw{grid-column:span 20}
+.big{font-size:44px;font-weight:700;line-height:1}.unit{font-size:15px;color:var(--mute);margin-left:4px;font-weight:500}
+.status{font-size:26px;font-weight:700;margin-top:4px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.pill{padding:6px 12px;border-radius:10px;font-size:14px;font-weight:600}
+.good{background:rgba(74,222,128,.14);color:var(--green)}.bad{background:rgba(245,177,61,.15);color:var(--amber)}.off{background:rgba(140,166,183,.14);color:var(--mute)}
+.bar{height:12px;border-radius:7px;background:#0B1B27;overflow:hidden;margin:6px 0 12px}.bar i{display:block;height:100%;border-radius:7px;transition:width .4s}
+.kv{display:flex;justify-content:space-between;font-size:14px;margin:4px 0;color:var(--mute)}.kv b{color:var(--text);font-weight:600}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--mute)}.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px}
+footer{color:var(--mute);font-size:12px;text-align:center}
+</style></head><body>
+<header>
+ <div class="logo">Night<b>Pulse</b></div><div class="sub">Quality-aware sleep-apnea research cue &middot; local inference on SK-AM62</div>
+ <span class="chip" id="mode">REPLAY</span><select id="recsel" class="chip" style="cursor:pointer"></select><span class="chip" id="rec">-</span>
+ <div class="sp"></div>
+ <div class="speed"><button id="bup" onclick="document.getElementById('upf').click()">&#8679; Upload log</button><input type="file" id="upf" accept=".csv,.txt,.rr" style="display:none"><button id="bpause">&#10074;&#10074; Pause</button><button id="bexp" style="display:none" onclick="location='/api/export.zip'">&#8681; Export ZIP</button><button id="bstop">&#9632; Stop</button></div>
+ <div class="speed"><span class="sub">Replay speed</span><button data-s="1">1x</button><button data-s="5">5x</button><button data-s="20">20x</button><button data-s="60">60x</button></div>
+ <span class="chip" id="clock">--:--</span>
+</header>
+<div class="grid">
+ <div class="card ecg"><h3><span id="ecgtitle">ECG &middot; last 6 seconds</span><span class="legend"><span><i style="background:var(--teal)"></i>signal</span><span><i style="background:var(--red)"></i>detected heartbeat</span></span></h3><canvas id="ecg"></canvas></div>
+ <div class="card gauge"><h3 style="width:100%"><span>Apnea-like risk &middot; latest minute</span></h3><canvas id="gauge" style="max-height:62%"></canvas><div class="status" id="stat">-</div><div class="sub" id="statsub">waiting for first window</div></div>
+ <div class="card tl"><h3><span id="tltitle">Risk timeline &middot; one bar per minute</span><span class="legend"><span><i style="background:var(--green)"></i>normal</span><span><i style="background:var(--amber)"></i>borderline</span><span><i style="background:var(--red)"></i>apnea-like</span><span><i style="background:#3A4F5F"></i>unknown (low quality)</span><span><i style="background:var(--purple)"></i>reference label: apnea</span></span></h3><canvas id="tl"></canvas></div>
+ <div class="card bw"><h3>Breathing waveform &middot; from PPG, last 2 minutes &middot; experimental, misses many real pauses <span id="bwn" style="color:var(--amber);letter-spacing:0"></span></h3><canvas id="bwc"></canvas></div>
+ <div class="card c3"><h3>Heart rate</h3><div><span class="big" id="hr" style="color:var(--red)">--</span><span class="unit">beats/min</span></div><canvas id="hrc"></canvas></div>
+ <div class="card c3"><h3>Signal quality</h3>
+  <div class="row"><span class="pill off" id="qecg">ECG --</span><span class="pill off" id="qppg">PPG: no source</span></div>
+  <div class="kv" style="margin-top:12px"><span>Reason</span><b id="qwhy">-</b></div>
+  <div class="kv"><span>Minutes scored</span><b id="nsc">0</b></div><div class="kv"><span>Apnea-like minutes</span><b id="nev" style="color:var(--red)">0</b></div><div class="kv"><span>Abstained</span><b id="nab" style="color:var(--amber)">0</b></div>
+  <div class="kv"><span>Playhead</span><b id="ph">0:00</b></div></div>
+ <div class="card c3"><h3>Breathing &middot; from PPG (experimental)</h3><div><span class="big" id="br" style="color:var(--teal)">--</span><span class="unit">breaths/min</span></div><canvas id="brc"></canvas><div class="kv"><span>Confidence</span><b id="brq">--</b></div><div class="kv"><span>Pause candidates</span><b id="npz" style="color:var(--amber)">0</b></div><div class="kv"><span>Latest</span><b id="lpz">--</b></div></div>
+ <div class="card c3"><h3>Inference latency (ms / minute)</h3><div><span class="big" id="lat" style="color:var(--blue)">--</span><span class="unit">ms mean</span></div><canvas id="latc"></canvas><div class="kv"><span>95th percentile</span><b id="p95">--</b></div></div>
+ <div class="card c3"><h3>Board</h3>
+  <div class="kv"><span>CPU</span><b id="cpu">--</b></div><div class="bar"><i id="cpub" style="width:0;background:var(--teal)"></i></div>
+  <div class="kv"><span>Memory</span><b id="ram">--</b></div><div class="bar"><i id="ramb" style="width:0;background:var(--purple)"></i></div>
+  <div class="kv"><span>Temperature</span><b id="temp">--</b></div><div class="kv"><span>Model</span><b id="model">--</b></div><div class="kv"><span>Model size</span><b>2 KB &middot; 29 weights</b></div></div>
+</div>
+<footer>Educational research prototype. Offline risk cue only. Not a medical device and not a diagnosis.</footer>
+<script>
+const $=id=>document.getElementById(id);
+let SEL=null,TLG={bw:1,n:60},SELD=null;const C={teal:'#2DD4BF',green:'#4ADE80',amber:'#F5B13D',red:'#FF5D6C',blue:'#5AA9FF',purple:'#A78BFA',grid:'#1B3547',mute:'#8CA6B7',unk:'#3A4F5F'};
+function setup(cv){const r=cv.getBoundingClientRect(),d=devicePixelRatio||1;if(cv.width!==Math.round(r.width*d)||cv.height!==Math.round(r.height*d)){cv.width=Math.round(r.width*d);cv.height=Math.round(r.height*d)}const g=cv.getContext('2d');g.setTransform(d,0,0,d,0,0);g.clearRect(0,0,r.width,r.height);return[g,r.width,r.height]}
+function riskColor(s){return s==null?C.unk:s>0.5?C.red:s>0.42?C.amber:C.green}
+function drawECG(d0){let d=d0;if(SELD&&SEL!=null)d=Object.assign({},d0,{ecg:SELD.ecg,ecg_peaks:SELD.peaks});const[g,W,H]=setup($('ecg'));g.strokeStyle=C.grid;g.lineWidth=1;for(let i=1;i<6;i++){g.beginPath();g.moveTo(i*W/6,0);g.lineTo(i*W/6,H);g.stroke()}for(let i=1;i<4;i++){g.beginPath();g.moveTo(0,i*H/4);g.lineTo(W,i*H/4);g.stroke()}
+ const e=d.ecg;if(e.length<2)return;let mn=Math.min(...e),mx=Math.max(...e);const pad=(mx-mn)*.12||1;mn-=pad;mx+=pad;const y=v=>H-8-(v-mn)/(mx-mn)*(H-16);
+ g.strokeStyle=C.teal;g.lineWidth=2.2;g.shadowColor=C.teal;g.shadowBlur=8;g.beginPath();e.forEach((v,i)=>{const x=i/(e.length-1)*W;i?g.lineTo(x,y(v)):g.moveTo(x,y(v))});g.stroke();g.shadowBlur=0;
+ g.fillStyle=C.red;(d.ecg_peaks||[]).forEach(p=>{const x=(1+p/6)*W;let idx=Math.round((x/W)*(e.length-1));if(idx<0||idx>=e.length)return;let bi=idx,bv=-1;const med=e[Math.floor(e.length/2)];for(let k=Math.max(0,idx-9);k<=Math.min(e.length-1,idx+9);k++){const a=Math.abs(e[k]-med);if(a>bv){bv=a;bi=k}}g.beginPath();g.arc(bi/(e.length-1)*W,y(e[bi])-9,5,0,7);g.fill()})}
+function drawGauge(d){const[g,W,H]=setup($('gauge'));const h=d.history,last=SEL!=null?h.find(p=>p.m===SEL):(h.length?h[h.length-1]:null),s=last&&last.score!=null?last.score:null;const cx=W/2,cy=H*0.92,r=Math.min(W*.46,H*.85);
+ g.lineWidth=r*.18;g.lineCap='butt';const seg=[[0,.42,C.green],[.42,.5,C.amber],[.5,1,C.red]];seg.forEach(([a,b,c])=>{g.strokeStyle=c;g.globalAlpha=.9;g.beginPath();g.arc(cx,cy,r,Math.PI*(1+a),Math.PI*(1+b));g.stroke()});g.globalAlpha=1;
+ g.fillStyle=C.mute;g.font='13px system-ui';g.textAlign='center';g.fillText('0',cx-r,cy+18);g.fillText('1',cx+r,cy+18);g.fillText('0.5',cx,cy-r-g.lineWidth/2-6);
+ const v=s==null?0:s;const ang=Math.PI*(1+v);g.strokeStyle='#fff';g.lineWidth=5;g.lineCap='round';g.beginPath();g.moveTo(cx+Math.cos(ang)*r*.55,cy+Math.sin(ang)*r*.55);g.lineTo(cx+Math.cos(ang)*r*1.12,cy+Math.sin(ang)*r*1.12);g.stroke();g.fillStyle='#fff';g.beginPath();g.arc(cx,cy,9,0,7);g.fill();
+ g.fillStyle=riskColor(s);g.font='700 40px system-ui';g.fillText(s==null?'--':s.toFixed(2),cx,cy-r*.28)}
+function drawTL(d){const[g,W,H]=setup($('tl'));const h=d.history;const n=Math.max(60,h.length);const labH=14,bot=26,top=6,ph=H-labH-bot-top;const bw=(W-40)/n;TLG={bw,n};
+ g.strokeStyle=C.grid;g.lineWidth=1;[0,.5,1].forEach(v=>{const y=top+ph*(1-v);g.beginPath();g.moveTo(34,y);g.lineTo(W,y);g.stroke();g.fillStyle=C.mute;g.font='11px system-ui';g.textAlign='right';g.fillText(v,28,y+4)});
+ g.setLineDash([5,5]);g.strokeStyle='#7B8FA0';const y5=top+ph*.5;g.beginPath();g.moveTo(34,y5);g.lineTo(W,y5);g.stroke();g.setLineDash([]);
+ h.forEach((p,i)=>{const x=36+i*bw,w=Math.max(2,bw-2);g.globalAlpha=p.prov||p.test?.5:1;if(p.score==null){g.fillStyle=C.unk;g.fillRect(x,top+ph*.05,w,ph*.95)}else{g.fillStyle=riskColor(p.score);const bh=Math.max(3,p.score*ph);g.fillRect(x,top+ph-bh,w,bh)}
+  g.globalAlpha=1;if(p.prov){g.setLineDash([3,3]);g.strokeStyle='#cfe3f3';g.lineWidth=1;g.strokeRect(x+.5,top+ph-Math.max(3,(p.score||0)*ph)+.5,w-1,Math.max(3,(p.score||0)*ph)-1);g.setLineDash([])}
+  if(p.label==='A'){g.fillStyle=C.purple;g.fillRect(x,top+ph+6,w,labH)}
+  if(p.m===SEL){g.strokeStyle='#fff';g.lineWidth=2;g.strokeRect(x-1,top-1,w+2,ph+labH+8)}});
+ g.fillStyle=C.mute;g.font='11px system-ui';g.textAlign='center';for(let i=0;i<n;i+=Math.max(1,Math.round(n/12))){const m=(h[i]?h[i].m:(h.length?h[h.length-1].m+(i-h.length+1):i));g.fillText(d.test?(m*5)+' s':'min '+m,36+i*bw+bw/2,H-6)}}
+function drawBW(d){const[g,W,H]=setup($('bwc'));const w=d.bw||[],T=120;g.strokeStyle=C.grid;g.lineWidth=1;g.beginPath();g.moveTo(0,H/2);g.lineTo(W,H/2);g.stroke();g.fillStyle=C.mute;g.font='11px system-ui';
+if(w.length<8){g.fillText(d.ppg==='no source'?'No PPG source in this mode':'Waiting for pulses (needs about 90 s)',12,H/2-8);$('bwn').textContent='';return}
+const t0=d.bw_end-T,X=t=>(t-t0)/T*W,P=d.pauses||[];let cnt=0;for(const p of P){if(p.end<t0)continue;cnt++;g.fillStyle='rgba(255,93,108,.22)';g.fillRect(X(Math.max(p.start,t0)),0,X(p.end)-X(Math.max(p.start,t0)),H);g.fillStyle=C.red;g.fillText('pause '+Math.round(p.end-p.start)+' s',X(Math.max(p.start,t0))+4,14)}
+g.strokeStyle=C.teal;g.lineWidth=2;g.beginPath();w.forEach((v,i)=>{const x=X(d.bw_end-(w.length-1-i)/4),y=H/2-v*(H/2-8);i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke();g.fillStyle=C.mute;g.fillText('2 min ago',4,H-4);g.fillText('now',W-26,H-4);$('bwn').textContent=cnt?cnt+' pause candidate'+(cnt>1?'s':'')+' in view':''}
+function spark(id,arr,color,min,max){const[g,W,H]=setup($(id));if(arr.length<2)return;const mn=min!=null?min:Math.min(...arr),mx=max!=null?max:Math.max(...arr),rng=(mx-mn)||1;const y=v=>H-6-(v-mn)/rng*(H-12);
+ g.strokeStyle=color;g.lineWidth=2.2;g.beginPath();arr.forEach((v,i)=>{const x=i/(arr.length-1)*W;i?g.lineTo(x,y(v)):g.moveTo(x,y(v))});g.stroke();g.lineTo(W,H);g.lineTo(0,H);g.closePath();g.globalAlpha=.12;g.fillStyle=color;g.fill();g.globalAlpha=1}
+const pct=(a,p)=>{if(!a.length)return 0;const s=[...a].sort((x,y)=>x-y);return s[Math.min(s.length-1,Math.floor(p*s.length))]};
+function fmt(s){s=Math.floor(s);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
+async function tick(){let d;try{d=await (await fetch('/api/state')).json()}catch(e){return}
+ $('mode').textContent=d.mode;$('mode').className='chip '+(d.mode==='LIVE'?'live':'replay');$('rec').textContent=d.msg&&d.mode==='LIVE'?(d.status==='error'?'error: ':'')+d.msg:d.status==='loading'?'loading...':d.status==='finished'?'finished':d.status;if($('recsel').value!==d.record&&document.activeElement!==$('recsel'))$('recsel').value=d.record;
+ document.querySelectorAll('.speed button[data-s]').forEach(b=>{b.classList.toggle('on',d.mode!=='LIVE'&&+b.dataset.s===d.speed);b.style.opacity=d.mode==='LIVE'?.35:1});
+ const h=d.history,last=SEL!=null?(h.find(p=>p.m===SEL)||null):(h.length?h[h.length-1]:null),s=last&&last.score!=null?last.score:null;
+ const st=$('stat'),ss=$('statsub');if(!last){st.textContent='Waiting...';st.style.color=C.mute}else if(s==null){st.textContent='UNKNOWN';st.style.color=C.amber;ss.textContent='minute '+last.m+(SEL!=null?' (paused, selected)':'')+'. low-quality window ('+last.why+'): no score given'}else if(s>0.5){st.textContent='APNEA-LIKE PATTERN';st.style.color=C.red;ss.textContent=(d.test?'TEST ONLY, not a risk result. ':'minute '+last.m+(last.prov?' PROVISIONAL, final in about 2 min':'')+(SEL!=null?' (paused, selected)':'')+'. ')+'research cue, not a diagnosis'}else{st.textContent='NORMAL PATTERN';st.style.color=C.green;ss.textContent=(d.test?'TEST ONLY, not a risk result. ':'minute '+last.m+(last.prov?' PROVISIONAL, final in about 2 min':'')+(SEL!=null?' (paused, selected)':'')+'. ')+'within normal range'}
+ $('hr').textContent=d.hr||'--';$('br').textContent=d.resp_rate==null?'--':Math.round(d.resp_rate);$('brq').textContent=d.resp_rate==null?(d.ppg==='no source'?'no PPG source':'no pulse found'):(d.resp_agree?'high (methods agree)':'moderate');const pz=d.pauses||[];$('npz').textContent=pz.length;$('lpz').textContent=pz.length?fmt(pz[pz.length-1].start)+' for '+Math.round(pz[pz.length-1].end-pz[pz.length-1].start)+' s':'none';spark('brc',d.resp_hist||[],C.teal,0,40);drawBW(d);$('bexp').style.display=d.export?'':'none';$('bexp').title=d.export?d.export.dir:'';const qp=$('qppg');qp.textContent='PPG: '+(d.ppg==='GOOD'?'good':d.ppg==='NO PULSE'?'no pulse':'no source');qp.className='pill '+(d.ppg==='GOOD'?'good':d.ppg==='NO PULSE'?'bad':'off');const q=$('qecg');q.textContent='ECG '+d.quality;q.className='pill '+(d.quality==='GOOD'?'good':d.quality==='UNKNOWN'?'bad':'off');$('qwhy').textContent=d.quality_why||'-';
+ const ab=h.filter(p=>p.score==null).length;$('nsc').textContent=h.length;$('nev').textContent=d.events;$('nab').textContent=ab;$('ph').textContent=fmt(d.playhead)+' / '+fmt(d.total_s);
+ const lt=d.lat;$('lat').textContent=lt.length?(lt.reduce((a,b)=>a+b,0)/lt.length).toFixed(1):'--';$('p95').textContent=lt.length?pct(lt,.95).toFixed(1)+' ms':'--';
+ const sy=d.sys||{};$('cpu').textContent=(sy.cpu||0)+' %';$('cpub').style.width=(sy.cpu||0)+'%';if(sy.ram_total_mb){$('ram').textContent=sy.ram_used_mb+' / '+sy.ram_total_mb+' MB';$('ramb').style.width=(100*sy.ram_used_mb/sy.ram_total_mb)+'%'}$('temp').textContent=sy.temp_c?sy.temp_c.toFixed(0)+' C':'n/a';$('model').textContent=d.model;
+ $('tltitle').innerHTML=d.test?'TEST timeline &middot; one bar per 5 s &middot; not a risk result':'Risk timeline &middot; one bar per minute &middot; faded dashed bars are provisional';$('ecgtitle').innerHTML=SEL!=null?'ECG &middot; sample from minute '+SEL+' (paused)':'ECG &middot; last 6 seconds';$('bpause').innerHTML=(d.paused?'&#9654; Resume':'&#10074;&#10074; Pause');$('bstop').innerHTML=d.status==='stopped'?'&#9654; Play':'&#9632; Stop';window._st=d.status;window._paused=d.paused;drawECG(d);drawGauge(d);drawTL(d);spark('hrc',h.filter(p=>p.hr).map(p=>p.hr),C.red);spark('latc',lt,C.blue,0)}
+const KIND={a:'apnea',b:'borderline',c:'normal'};
+(async()=>{try{const r=await (await fetch('/api/records')).json();$('recsel').innerHTML=r.map(n=>`<option value="${n}">${n==='LIVE_TEST'?'LIVE TEST (fast, debug only)':n==='LIVE_EVM'?'LIVE (AFE4950 EVM)':n+' ('+(n.startsWith('live_')?'saved live capture':n.startsWith('evm_')?'EVM simulator capture':n.endsWith('.rr')?'ESP32 beat log':(KIND[n[0]]||'?')+' recording')+')'}</option>`).join('');$('upf').onchange=async e=>{const f=e.target.files[0];if(!f)return;const r=await (await fetch('/api/upload?name='+encodeURIComponent(f.name.replace(/\.[^.]*$/,'')),{method:'POST',body:await f.text()})).json();location.reload()};$('recsel').onchange=e=>{fetch('/api/select/'+e.target.value)}}catch(e){}})();
+document.querySelectorAll('.speed button[data-s]').forEach(b=>b.onclick=()=>fetch('/api/speed/'+b.dataset.s));
+$('bpause').onclick=async()=>{if(SEL!=null){SEL=null;SELD=null}await fetch(window._paused?'/api/resume':'/api/pause')};
+$('bstop').onclick=async()=>{SEL=null;SELD=null;await fetch(window._st==='stopped'?'/api/play':'/api/stop')};
+$('tl').style.cursor='pointer';
+$('tl').onclick=async e=>{const r=$('tl').getBoundingClientRect(),i=Math.floor((e.clientX-r.left-36)/TLG.bw);const d=await (await fetch('/api/state')).json();const p=d.history[i];if(!p)return;if(SEL===p.m){SEL=null;SELD=null;await fetch('/api/resume');return}await fetch('/api/pause');SEL=p.m;try{SELD=await (await fetch('/api/minute/'+p.m)).json()}catch(x){SELD=null}tick()};
+setInterval(()=>{$('clock').textContent=new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})},1000);
+setInterval(tick,300);tick();
+</script></body></html>

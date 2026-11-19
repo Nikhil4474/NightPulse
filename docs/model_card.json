@@ -1,0 +1,119 @@
+{
+ "model": "nightpulse-lr-v4",
+ "task": "per-minute apnea-like heartbeat-timing cue (research prototype, not a diagnosis)",
+ "classes": {
+  "0": "normal (reference label N)",
+  "1": "apnea-like (reference label A)",
+  "UNKNOWN": "abstained by quality gate"
+ },
+ "input": {
+  "signal": "three-lead ECG (red, black, white electrodes), one ECG waveform analyzed",
+  "units": "normalized amplitude (arbitrary), sampled at 100 Hz",
+  "window": "60 s minute, with +-2 minute context (5 minute window)",
+  "preprocessing": "XQRS beat detection (wfdb) in 10 minute chunks; R-R kept if 0.3 to 2.0 s"
+ },
+ "quality_gate": [
+  "flatline (peak-to-peak or std < 1e-3)",
+  "clipping (>2% samples at max)",
+  "beat count outside 30..200 per minute",
+  "<90% of R-R intervals in 0.3..2.0 s"
+ ],
+ "features_in_order": [
+  "rr_mean_s",
+  "rr_std_s",
+  "rmssd_s",
+  "pnn50_like_frac(>50ms)",
+  "rr_cv",
+  "rr_min_s",
+  "rr_max_s",
+  "rr_p90_minus_p10_s",
+  "n_rr",
+  "band_0.01-0.04Hz_frac",
+  "band_0.04-0.15Hz_frac",
+  "band_0.15-0.4Hz_frac",
+  "log_power_0.01-0.04Hz",
+  "m-1_rr_mean",
+  "m-1_rr_std",
+  "m-1_rmssd",
+  "m-1_pnn",
+  "m+1_rr_mean",
+  "m+1_rr_std",
+  "m+1_rmssd",
+  "m+1_pnn",
+  "m-2_rr_mean",
+  "m-2_rr_std",
+  "m-2_rmssd",
+  "m-2_pnn",
+  "m+2_rr_mean",
+  "m+2_rr_std",
+  "m+2_rmssd",
+  "m+2_pnn"
+ ],
+ "neighbor_order_note": "neighbors are appended in order k = -1, +1, -2, +2; a low-quality neighbor contributes four zeros",
+ "classifier": "features clipped to the training 1-99 percent range, then StandardScaler + logistic regression (C=0.5, class_weight balanced), threshold 0.5, exported to model.json (29 weights)",
+ "training_data": [
+  "PhysioNet Apnea-ECG: 35 labeled records, 15,790 usable minutes, per-minute apnea reference labels (the only apnea-labeled source; none of the datasets named in the Track 2 manual has apnea labels; it comes from the PhysioNet physiological databases the manual references)",
+  "WESAD (named in the manual): 15 healthy volunteers, chest ECG, awake states (baseline, stress, amusement, meditation, transitions), 1,348 usable minutes, used as non-apnea awake examples. ASSUMPTION: none of them was screened for sleep apnea."
+ ],
+ "split": "record or subject level 5-fold GroupKFold over Apnea-ECG records (c05 and c06 grouped) and WESAD subjects; clipping bounds and normalization fit inside training folds only",
+ "held_out_results": {
+  "auroc": 0.809,
+  "auroc_95ci_record_bootstrap": [
+   0.72,
+   0.881
+  ],
+  "sensitivity": 0.681,
+  "specificity": 0.807,
+  "on_apnea_ecg_minutes": 15790,
+  "wesad_awake_false_alarm_rate_held_out_subjects": 0.185,
+  "bootstrap": "1000 resamples of Apnea-ECG records",
+  "v3_for_comparison": "AUROC 0.814, sensitivity 0.702, specificity 0.805, WESAD false alarm 0.251 (Apnea-ECG only)"
+ },
+ "safeguards": [
+  "scores clip features to the training 1-99 percent range",
+  "abstains (UNKNOWN: outside trained range) when 6 or more of 29 features fall outside the training 0.5-99.5 percent range; about 2 percent of training minutes",
+  "cross-validated results above include clipping"
+ ],
+ "limitations": [
+  "trained on overnight sleep recordings; scores while awake, moving or talking are not meaningful",
+  "single public dataset, not tested on AFE4950 recordings yet",
+  "ECG only; PPG not in the model",
+  "dashboard scores lag by about 3 minutes (2 minute lookahead)",
+  "scores on bundled demo records are in-sample",
+  "not a medical device"
+ ],
+ "package_versions_dev": {
+  "python": "3.13",
+  "numpy": "2.5.3",
+  "scipy": "1.18.1",
+  "wfdb": "4.3.1"
+ },
+ "gate_test_only": "MIT-BIH Arrhythmia Database (named in the manual): 48 records, 1,440 minutes, used only to test the quality gate and out-of-range guard (12 percent of minutes abstained); no apnea labels, so no accuracy claim.",
+ "external_validation": {
+  "apnea_ecg_test_set_x01_x35": {
+   "minutes_scored": 15780,
+   "abstained_pct": 7.6,
+   "auroc": 0.858,
+   "auroc_ci95": [
+    0.784,
+    0.921
+   ],
+   "sensitivity_at_0.5": 0.775,
+   "specificity_at_0.5": 0.798,
+   "note": "35 PhysioNet test records never used in training"
+  },
+  "osasud_stroke_unit_30_patients": {
+   "ecg_model_auroc": 0.564,
+   "ecg_abstained_pct": 19,
+   "note": "different population, monitor ECG at 80 Hz, positives include hypopnea; the ECG model did NOT transfer"
+  },
+  "ppg_breathing_pause_detector_osasud": {
+   "default_sensitivity_apnea_events": "5 to 13 percent",
+   "default_false_alarms_per_hour": "2.4 to 2.8",
+   "tuned_sensitivity": "about 0.5 at roughly 24 false alarms per hour",
+   "minute_level_auroc_ppg_features_hgb": 0.676,
+   "ecg_plus_ppg_auroc": 0.673,
+   "verdict": "breathing/PPG did not add to the ECG score in this test and is not accurate enough to claim apnea detection"
+  }
+ }
+}
