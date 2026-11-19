@@ -23,7 +23,7 @@ Measured results (details and caveats in the report and in `docs/VALIDATION.md`)
 | Held-out PhysioNet Apnea-ECG test records x01-x35 (17,073 minutes, 7.6% abstained) | AUROC 0.858 (95% CI 0.784 to 0.921), sensitivity 77.5%, specificity 79.8% at threshold 0.5 |
 | 5-fold cross-validation on the learning set | AUROC 0.809 (95% CI 0.72 to 0.881) |
 | OSASUD stroke-unit patients (different population) | AUROC 0.564, did not transfer |
-| SK-AM62B benchmark, network isolated, 63 min of ECG | 26 s whole run, 27.6 ms per minute of ECG, 175 MB peak memory (measured with an earlier 2.1 KB model file, see Limitations) |
+| SK-AM62B benchmark, network isolated, 60 min of ECG, final 3.7 KB model | 27.2 s whole run, 32.0 ms per minute of ECG (50 ms worst), 176 MB peak memory |
 
 ## Repository layout
 
@@ -115,7 +115,6 @@ External experiments (OSASUD, BIDMC breathing rate) are listed in `evaluation/ex
 ## Limitations
 
 * Accuracy is only reported on public datasets. No accuracy is claimed from AFE4950EVM recordings, and a full live session on the board (EVM to score) was not demonstrated in time for the final round.
-* The 2,127-byte model file in the board benchmark was an earlier build. The final `model.json` is 3,703 bytes (it adds the clipping and out-of-range limits). Re-run `offline_bench.py` to refresh the numbers.
 * The model did not transfer to stroke-unit patients (OSASUD, AUROC 0.56). The PPG breathing branch is experimental and does not feed the score.
 * WESAD minutes are used as non-apnea examples without apnea screening.
 * The score needs 2 minutes of future data, so it lags by about 3 minutes.
