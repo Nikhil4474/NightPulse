@@ -11,6 +11,8 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 import numpy as np, wfdb
 import nightpulse as NP
 import resp as RS
+from scipy.signal import butter, sosfilt, sosfilt_zi
+_SOS_LIVE = butter(4, [0.1, 0.35], btype='band', fs=RS.FS, output='sos')   # breathing band, 6 to 21 breaths/min, smooth
 
 EXPORT_DIR = os.environ.get('NIGHTPULSE_EXPORT', 'exports')
 if '--export-dir' in sys.argv:                      # python3 dashboard.py live --export-dir /media/usb/nightpulse
@@ -23,7 +25,7 @@ NMIN = int(sys.argv[2]) if len(sys.argv) > 2 else 120
 PORT = 8000
 S = dict(mode='REPLAY', record=os.path.basename(REC), status='loading', speed=5, playhead=0.0, total_s=0,
          history=[], ecg=[], ecg_peaks=[], quality='...', quality_why='', hr=0, lat=[], model=NP.M['version'],
-         ppg='no source', events=0, paused=False, test=False, msg='', resp_rate=None, resp_agree=False, resp_hist=[], pauses=[], bw=[], bw_end=0.0, export=None)
+         ppg='no source', events=0, paused=False, test=False, msg='', resp_rate=None, resp_agree=False, resp_hist=[], pauses=[], bw=[], bw_end=0.0, bw_live=[], export=None)
 LOCK = threading.Lock()
 GEN = [0]
 CUR = {}
@@ -175,7 +177,7 @@ def live_worker(gen, test=False):
     import evm_live as EV
     stream = EV.EvmStream(cfg=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'evm', 'AFE4950_Settings.cfg'))
     stream.backup = BACKUP_DIR
-    ppg = np.zeros(0); last_rr = 0.0; last_pz = 0.0
+    ppg = np.zeros(0); last_rr = 0.0; last_pz = 0.0; last_live = 0; lz = None; lbuf = np.zeros(0)
     sig = np.zeros(0); t = np.zeros(0); committed = 0.0; last_det = 0.0; scored = 1; tstep = 0.0; last_prov = 0.0
     try:
         while GEN[0] == gen and stream.state in ('starting', 'configuring'):
@@ -190,6 +192,12 @@ def live_worker(gen, test=False):
             p = stream.take_ppg()
             if len(p): ppg = np.concatenate([ppg, p])
             pend = len(ppg) / RS.FS
+            if len(p):                                                    # instant breathing trace: causal filter, drawn samples never change
+                if lz is None: lz = sosfilt_zi(_SOS_LIVE) * float(p[0])
+                zq, lz = sosfilt(_SOS_LIVE, np.asarray(p, float), zi=lz)
+                lbuf = np.concatenate([lbuf, zq])[-30 * RS.FS:]
+                if len(ppg) >= 5 * RS.FS:
+                    with LOCK: S['bw_live'] = [round(float(v), 4) for v in lbuf[::2]]
             if pend - last_rr >= 8 and len(ppg) >= RS.WIN * RS.FS:        # breathing rate from the optical channel
                 last_rr = pend; r, info = RS.breathing_rate(ppg[-RS.WIN * RS.FS:])
                 with LOCK:
